@@ -628,7 +628,7 @@ def put_kiwix_enabled_into_menu_json():
     zim_versions_info = read_json_file(zim_idx)
     for perma_ref in zim_versions_info: # all installed zims OR use zims_installed
         # if other zims exist, do not add test zim
-        if len(zim_versions_info) > 1 and perma_ref == 'tes':
+        if len(zim_versions_info) > 1 and perma_ref == 'test':
             continue
         if perma_ref in perma_refs_in_menu: # already in menu
             continue
@@ -652,7 +652,7 @@ def put_kiwix_enabled_into_menu_json():
             menu_item_name = new_def_name
         update_menu_json(expected_name) # add to menu
 
-def put_kiwix_enabled_into_menu_json_SAVE():
+def put_kiwix_enabled_into_menu_json_SAVE(): # unused since 2024-06-10
     # steps:
     #   1. Make sure all downloaded zims are in zim_verion_idx
     #   2. Look for a back link to perma_ref in menu_defs_dir
@@ -673,7 +673,7 @@ def put_kiwix_enabled_into_menu_json_SAVE():
             for perma_ref in zim_versions_info:
                 #print(perma_ref)
                 # if other zims exist, do not add test zim
-                if len(zim_versions_info) > 1 and perma_ref == 'tes':
+                if len(zim_versions_info) > 1 and perma_ref == 'tes': # N.B test zim perma_ref is now 'test'
                     continue
                 # check if menu def exists for this perma_ref
                 menu_item_name = zim_menu_defs.get(perma_ref, {}).get('name')
@@ -699,7 +699,7 @@ def put_kiwix_enabled_into_menu_json_SAVE():
 def generate_zim_menu_def(perma_ref, menu_def_name, zim_info):
     # this looks only to be used by zims
     # do not generate a menuDef for the test zim
-    if perma_ref == 'tes': return ""
+    if perma_ref == 'test': return ""
 
     zim_lang = zim_info['language']
     menu_def_lang = kiwix_lang_to_iso2(zim_lang)
