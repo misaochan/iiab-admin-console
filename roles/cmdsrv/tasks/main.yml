@@ -33,10 +33,10 @@
 
 - name: Download piclone_cmd to /usr/sbin
   get_url:
-    url: "{{ iiab_download_url }}/piclone_cmd_{{ ansible_architecture }}"
+    url: "{{ iiab_download_url }}/piclone_cmd_{{ ansible_facts['architecture'] }}"
     dest: "/usr/sbin/piclone_cmd"
     mode: '0700'
-  when: ansible_architecture == "armv7l" or ansible_architecture == "aarch64"
+  when: ansible_facts['architecture'] == "armv7l" or ansible_facts['architecture'] == "aarch64"
 
 - name: Install rclone for wasabi
   shell: curl -s https://rclone.org/install.sh | bash -
