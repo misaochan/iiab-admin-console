@@ -2267,7 +2267,7 @@ def run_ansible(cmd_info): # create multiple jobs to run in succession
 
     if cmd_info['cmd'] == "RUN-ANSIBLE":
 
-        job_command = ansible_playbook_program + " -i " + iiab_repo + "/ansible_hosts " + iiab_repo + "/iiab-from-console.yml --connection=local"
+        job_command = ansible_playbook_program + " -M " + iiab_repo + "/modules" +  " -i " + iiab_repo + "/ansible_hosts " + iiab_repo + "/iiab-from-console.yml --connection=local"
 
         if 'cmd_args' in cmd_info:
             tags = cmd_info['cmd_args']['tags']
@@ -2362,7 +2362,7 @@ def run_ansible_roles(cmd_info):
         f.writelines(lines)
 
     # first step run ansible
-    job_command = ansible_playbook_program + " -i " + iiab_repo + "/ansible_hosts " + iiab_repo + "/adm-run-roles-tmp.yml --connection=local"
+    job_command = ansible_playbook_program + " -M " + iiab_repo + "/modules" + " -i " + iiab_repo + "/ansible_hosts " + iiab_repo + "/adm-run-roles-tmp.yml --connection=local"
     job_id = request_one_job(cmd_info, job_command, 1, -1, "Y")
 
     # second step update home menu
