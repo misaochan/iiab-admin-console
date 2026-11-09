@@ -24,7 +24,6 @@ import yaml
 import jinja2
 import configparser
 import xml.etree.ElementTree as ET
-from bs4 import BeautifulSoup
 
 import iiab.iiab_lib as iiab
 import iiab.iiab_const as IIAB_CONST
@@ -67,13 +66,11 @@ def read_opds_library_xml(lib_xml_file, kiwix_exclude_attr=["favicon"]):
     zims_installed = {}
     path_to_id_map = {}
     try:
-        with open(lib_xml_file, 'rb') as f:
-            opds = BeautifulSoup(f, 'lxml-xml')
-        for zim in opds.find_all(CONST.kiwix_lib_opds_test_tag):
+        for zim in ET.parse(lib_xml_file).getroot().iterfind('{*}' + CONST.kiwix_lib_opds_test_tag):
             zim_attr = parse_opds_library_entry(zim)
             if 'path' not in zim_attr:
                 continue
-            zim_id = zim.find('id', recursive=False).text.strip().split(':')[-1] # urn:uuid:<id>
+            zim_id = zim.find('{*}id').text.strip().split(':')[-1] # urn:uuid:<id>
             path_to_id_map[zim_attr['path']] = zim_id
             for attr in kiwix_exclude_attr:
                 zim_attr.pop(attr, None)
@@ -83,22 +80,23 @@ def read_opds_library_xml(lib_xml_file, kiwix_exclude_attr=["favicon"]):
     return zims_installed, path_to_id_map
 
 def parse_opds_library_entry(zim):
-    '''Like parse_root_attr in get_kiwix_catalog, but path is the local path'''
     zim_attr = {}
-    zim_attr['title'] = zim.find('title', recursive=False).text.strip()
-    zim_attr['description'] = zim.find('summary', recursive=False).text.strip()
-    zim_attr['creator'] = zim.find('author', recursive=False).text.strip()
-    zim_attr['date'] = zim.find('updated', recursive=False).text.strip().split('T')[0]
+    zim_attr['title'] = (zim.find('{*}title').text or '').strip()
+    zim_attr['description'] = (zim.find('{*}summary').text or '').strip()
+    author = zim.find('{*}author/{*}name')
+    zim_attr['creator'] = (author.text or '').strip() if author is not None else ''
+    zim_attr['date'] = zim.find('{*}updated').text.strip().split('T')[0]
     for attr in ['language', 'name', 'flavour', 'tags', 'articleCount', 'mediaCount']:
-        element = zim.find(attr, recursive=False) # author also has a <name>
+        element = zim.find('{*}' + attr)
         if element is not None:
-            zim_attr[attr] = element.text.strip()
+            zim_attr[attr] = (element.text or '').strip()
 
-    link = zim.find('link', type=CONST.kiwix_lib_opds_zim_link_type, recursive=False)
-    if link is not None and '://' not in link.get('href', ''):
-        zim_attr['path'] = link['href']
-        if link.get('length', '').isdigit():
-            zim_attr['size'] = str(int(link['length']) // 1024) # K
+    for link in zim.findall('{*}link'):
+        if link.get('type') == CONST.kiwix_lib_opds_zim_link_type and '://' not in link.get('href', ''):
+            zim_attr['path'] = link.get('href')
+            if link.get('length', '').isdigit():
+                zim_attr['size'] = str(int(link.get('length')) // 1024) # K
+            break
 
     # classic omits empty values and zero counts
     for attr in ['articleCount', 'mediaCount']:
