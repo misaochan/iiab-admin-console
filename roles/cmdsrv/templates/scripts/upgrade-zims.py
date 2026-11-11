@@ -31,7 +31,7 @@ zims_cat = {}
 cat_perm_ref_id_map = {}
 cat_perm_ref_url_map = {}
 zims_installed = {}
-path_to_id_map = {}
+file_to_id_map = {}
 quiet = False
 
 def main():
@@ -40,7 +40,7 @@ def main():
     global cat_perm_ref_id_map
     global cat_perm_ref_url_map
     global zims_installed
-    global path_to_id_map
+    global file_to_id_map
     global quiet
 
     num_threads = MAX_THREADS
@@ -60,7 +60,7 @@ def main():
     version_idx = read_zim_version_idx(zim_version_idx_dir + zim_version_idx_file)
     zims_cat = read_kiwix_catalog(KIWIX_CAT)
     cat_perm_ref_id_map, cat_perm_ref_url_map = calc_cat_perm_ref_idx(zims_cat)
-    zims_installed, path_to_id_map = adm.read_library_xml(lib_xml_file)
+    zims_installed, file_to_id_map = adm.read_library_xml(lib_xml_file)
 
     when_to_remove_old = 'after' # default
     if args.delete:
@@ -139,13 +139,13 @@ def calc_zim_upgrade(installed_perma_ref):
     upgrade_params = {}
     normalized_perma_ref = rewrite_perma_ref(installed_perma_ref)
     if normalized_perma_ref in cat_perm_ref_id_map: # current kiwix catalog has perma_ref to upgrade
-        old_zim_id = path_to_id_map["content/" + version_idx[installed_perma_ref]["file_name"] + ".zim"]
+        old_zim_id = file_to_id_map[version_idx[installed_perma_ref]["file_name"]]
         new_zim_id = cat_perm_ref_id_map[normalized_perma_ref]
         if new_zim_id != old_zim_id: # only download if not already downloaded
             upgrade_params['installed_perma_ref'] = installed_perma_ref
             upgrade_params['installed_zim_title'] = zims_installed[old_zim_id]['title']
             upgrade_params['old_zim_id'] = old_zim_id
-            upgrade_params['old_zim'] = zims_installed[old_zim_id]['path'].split('content/')[1]
+            upgrade_params['old_zim'] = os.path.basename(zims_installed[old_zim_id]['path'])
             upgrade_params['old_zim_version'] = calc_zim_version(upgrade_params['old_zim'])
             upgrade_params['old_zim_size_k'] = zims_installed[old_zim_id]['size']
             upgrade_params['new_zim_id'] = new_zim_id

@@ -36,13 +36,24 @@ map_catalog = {}
 # ZIM functions
 
 def read_library_xml(lib_xml_file, kiwix_exclude_attr=["favicon"]):
-    '''Same returns as iiab.read_library_xml'''
+    '''Same returns as iiab.read_library_xml, plus file_name and perma_ref, the map is keyed by file_name'''
     lib_format = get_kiwix_lib_format(lib_xml_file)
     if lib_format == 'classic':
-        return iiab.read_library_xml(lib_xml_file, kiwix_exclude_attr)
-    if lib_format == 'opds':
-        return read_opds_library_xml(lib_xml_file, kiwix_exclude_attr)
-    return {}, {}
+        zims_installed, _ = iiab.read_library_xml(lib_xml_file, kiwix_exclude_attr)
+    elif lib_format == 'opds':
+        zims_installed, _ = read_opds_library_xml(lib_xml_file, kiwix_exclude_attr)
+    else:
+        return {}, {}
+    file_to_id_map = {}
+    for zim_id, zim in zims_installed.items():
+        if 'path' in zim:
+            zim['file_name'] = path_to_file_name(zim['path'])
+            zim['perma_ref'] = iiab.calc_zim_perma_ref(zim['path'])
+            file_to_id_map[zim['file_name']] = zim_id
+    return zims_installed, file_to_id_map
+
+def path_to_file_name(path):
+    return os.path.basename(path).split('.zim')[0]
 
 def get_kiwix_lib_format(lib_xml_file):
     depth = 0
@@ -92,7 +103,7 @@ def parse_opds_library_entry(zim):
             zim_attr[attr] = (element.text or '').strip()
 
     for link in zim.findall('{*}link'):
-        if link.get('type') == CONST.kiwix_lib_opds_zim_link_type and '://' not in link.get('href', ''):
+        if link.get('type') == CONST.kiwix_lib_opds_zim_link_type:
             zim_attr['path'] = link.get('href')
             if link.get('length', '').isdigit():
                 zim_attr['size'] = str(int(link.get('length')) // 1024) # K
@@ -105,7 +116,7 @@ def parse_opds_library_entry(zim):
     return {attr: value for attr, value in zim_attr.items() if value != ''}
 
 def read_ext_library_xml(dev_name):
-    lib_dir = CONST.kiwix_ext_lib_dir + os.path.basename(dev_name) + '/'
+    lib_dir = ext_lib_dir(dev_name)
     lib_xml_file = lib_dir + 'library.xml'
     os.makedirs(lib_dir, exist_ok=True)
     zim_files = sorted(f for f in glob(dev_name + iiab.CONST.zim_path + '/content/*.zim') if os.path.getsize(f) > 0)
@@ -114,6 +125,12 @@ def read_ext_library_xml(dev_name):
     for zim_id in zims_installed: # relative to the device, not library.xml
         zims_installed[zim_id]['path'] = 'content/' + os.path.basename(zims_installed[zim_id]['path'])
     return zims_installed
+
+def ext_lib_dir(dev_name):
+    return CONST.kiwix_ext_lib_dir + os.path.basename(dev_name) + '/'
+
+def remove_ext_library_xml(dev_name):
+    shutil.rmtree(ext_lib_dir(dev_name), ignore_errors=True)
 
 def make_kiwix_lib(lib_xml_file, zim_files):
     if os.path.exists(lib_xml_file):
@@ -129,28 +146,27 @@ def make_kiwix_lib(lib_xml_file, zim_files):
             subprocess.run(kiwix_manage + [zim_file], capture_output=True)
 
 def write_zim_versions_idx(zim_versions, kiwix_library_xml, zim_version_idx_dir, zim_menu_defs):
-    zims_installed, path_to_id_map = read_library_xml(kiwix_library_xml)
+    zims_installed, file_to_id_map = read_library_xml(kiwix_library_xml)
 
     # drives off of zim_versions which is what is in file system
 
-    if path_to_id_map: # empty library still fails below
+    if file_to_id_map: # empty library still fails below
         for perma_ref in list(zim_versions):
-            path = 'content/' + zim_versions[perma_ref]['file_name'] + '.zim'
-            if path in path_to_id_map:
+            file_name = zim_versions[perma_ref]['file_name']
+            if file_name in file_to_id_map:
                 continue
-            readable = sorted(lib_path for lib_path in path_to_id_map if iiab.calc_zim_perma_ref(lib_path) == perma_ref)
+            readable = sorted(zim['file_name'] for zim in zims_installed.values() if zim.get('perma_ref') == perma_ref)
             if readable:
-                print('Warning: ' + path + ' is not in the library, using ' + readable[-1])
-                file_name = os.path.basename(readable[-1])
-                zim_versions[perma_ref]['file_name'] = file_name[:file_name.find('.zim')]
+                print('Warning: ' + file_name + ' is not in the library, using ' + readable[-1])
+                zim_versions[perma_ref]['file_name'] = readable[-1]
             else:
-                print('Warning: leaving ' + path + ' out of the index as it is not in the library (unreadable?)')
+                print('Warning: leaving ' + file_name + ' out of the index as it is not in the library (unreadable?)')
                 del zim_versions[perma_ref]
 
     for perma_ref in zim_versions:
         zim_versions[perma_ref]['menu_item'] = zim_menu_defs.get(perma_ref, {}).get('name')
         articlecount, mediacount, size, tags, lang, date = \
-            get_substitution_data(perma_ref, zim_versions, zims_installed, path_to_id_map)
+            get_substitution_data(perma_ref, zim_versions, zims_installed, file_to_id_map)
         zim_versions[perma_ref]['article_count'] = articlecount
         zim_versions[perma_ref]['media_count'] = mediacount
         size = iiab.human_readable(float(size) * 1024) # kiwix reports in K
@@ -209,14 +225,14 @@ def get_all_menu_defs(filter=None):
             all_menu_defs[menu_item_name] = menu_def
     return all_menu_defs
 
-def get_substitution_data(perma_ref, zim_versions, zims_installed, path_to_id_map):
+def get_substitution_data(perma_ref, zim_versions, zims_installed, file_to_id_map):
     #reconstruct the path in the id map
-    path = 'content/' + zim_versions[perma_ref]['file_name'] + '.zim'
+    file_name = zim_versions[perma_ref]['file_name']
     try:
-        zim_id = path_to_id_map[path]
+        zim_id = file_to_id_map[file_name]
         item = zims_installed[zim_id]
     except:
-        print('Error on ' + path)
+        print('Error on ' + file_name)
         print("zim_version_idx.json and library.xml are now out of sync.")
         print("Try removing the file and rerunning iiab-make-kiwix-lib.")
         raise
@@ -706,7 +722,7 @@ def put_kiwix_enabled_into_menu_json():
 
     zim_files, zim_versions = iiab.get_zim_list(iiab.CONST.zim_path)
     write_zim_versions_idx(zim_versions, iiab.CONST.kiwix_library_xml, CONST.zim_version_idx_dir, zim_menu_defs)
-    zims_installed, path_to_id_map = read_library_xml(iiab.CONST.kiwix_library_xml)
+    zims_installed, file_to_id_map = read_library_xml(iiab.CONST.kiwix_library_xml)
     home_menu = read_json_file(CONST.menu_json_file, verbose=True, fix_json=True)
 
     # convenience lists of zim menudefs and permarefs already in menu
@@ -728,7 +744,7 @@ def put_kiwix_enabled_into_menu_json():
     # list of zim languages converted to iso2 by perma ref
     zim_perma_ref_iso2 = {}
     for zim in zims_installed:
-        perma_ref = iiab.calc_zim_perma_ref(zims_installed[zim]['path'])
+        perma_ref = zims_installed[zim]['perma_ref']
         zim_lang_code = zims_installed[zim].get('language', '')
         zim_iso2_code = kiwix_lang_to_iso2(zim_lang_code)
         zim_perma_ref_iso2[perma_ref] = zim_iso2_code
@@ -753,8 +769,7 @@ def put_kiwix_enabled_into_menu_json():
             # we may later prefer to use an existing name that is not ideal but exists
             # as we did before
             new_def_name = expected_name
-            path = zim_versions[perma_ref].get('file_name') + '.zim'
-            zim_id = path_to_id_map['content/' + path]
+            zim_id = file_to_id_map[zim_versions[perma_ref].get('file_name')]
             zim_info = zims_installed[zim_id]
             new_menu_def = generate_zim_menu_def(perma_ref, new_def_name, zim_info)
             new_menu_def = format_menu_item_def(new_def_name, new_menu_def)
@@ -774,7 +789,7 @@ def put_kiwix_enabled_into_menu_json_SAVE(): # unused since 2024-06-10
     zim_menu_defs = get_zim_menu_defs() # read all menu defs
     zim_files, zim_versions = iiab.get_zim_list(iiab.CONST.zim_path)
     write_zim_versions_idx(zim_versions, iiab.CONST.kiwix_library_xml, CONST.zim_version_idx_dir, zim_menu_defs)
-    zims_installed, path_to_id_map = read_library_xml(iiab.CONST.kiwix_library_xml)
+    zims_installed, file_to_id_map = read_library_xml(iiab.CONST.kiwix_library_xml)
 
     # use that data
     zim_idx = CONST.zim_version_idx_dir + CONST.zim_version_idx_file
@@ -796,8 +811,7 @@ def put_kiwix_enabled_into_menu_json_SAVE(): # unused since 2024-06-10
                     if new_def_name in zim_menu_defs: # name already taken
                         new_def_name += '1' # OK this could exist too, but really
 
-                    path = zim_versions[perma_ref].get('file_name') + '.zim'
-                    zim_id = path_to_id_map['content/' + path]
+                    zim_id = file_to_id_map[zim_versions[perma_ref].get('file_name')]
                     zim_info = zims_installed[zim_id]
                     new_menu_def = generate_zim_menu_def(perma_ref, new_def_name, zim_info)
                     new_menu_def = format_menu_item_def(new_def_name, new_menu_def)

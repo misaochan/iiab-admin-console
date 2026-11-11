@@ -1899,6 +1899,7 @@ def umount_usb(cmd_info):
     except OSError:
         pass
     rc = subprocess.call(umount, shell=True) # 32 means not mounted
+    adm.remove_ext_library_xml(device)
     if rc == 32:
         resp = cmd_error(cmd="REMOVE-USB", msg="Device " + device + " is not mounted.")
         return resp
